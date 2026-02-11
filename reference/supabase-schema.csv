@@ -1,0 +1,80 @@
+table_name,column_name,data_type,is_nullable,column_default
+candidate_scored,id,uuid,YES,null
+candidate_scored,user_id,uuid,YES,null
+candidate_scored,organization_id,uuid,YES,null
+candidate_scored,source_email,text,YES,null
+candidate_scored,canonical_day,date,YES,null
+candidate_scored,date_received,timestamp with time zone,YES,null
+candidate_scored,candidate_name,text,YES,null
+candidate_scored,email_address,text,YES,null
+candidate_scored,contact_number,text,YES,null
+candidate_scored,educational_qualifications_raw,text,YES,null
+candidate_scored,degree_institution_raw,text,YES,null
+candidate_scored,degree_country_raw,text,YES,null
+candidate_scored,has_education_degree,boolean,YES,null
+candidate_scored,qualification_type,text,YES,null
+candidate_scored,years_teaching_experience,numeric,YES,null
+candidate_scored,teaching_phase_specialisation,text,YES,null
+candidate_scored,teaching_phase_alignment,text,YES,null
+candidate_scored,has_tefl,boolean,YES,null
+candidate_scored,has_tesol,boolean,YES,null
+candidate_scored,has_celta,boolean,YES,null
+candidate_scored,countries_raw,ARRAY,YES,null
+candidate_scored,current_location_raw,text,YES,null
+candidate_scored,raw_ai_score,integer,YES,null
+candidate_scored,ai_notes,text,YES,null
+candidate_scored,degree_institution_norm,text,YES,null
+candidate_scored,created_at,timestamp with time zone,YES,null
+candidate_scored,sa_university_match,boolean,YES,null
+candidate_scored,score_sa_uni,integer,YES,null
+candidate_scored,score_qualification,integer,YES,null
+candidate_scored,score_experience,integer,YES,null
+candidate_scored,score_extras,integer,YES,null
+candidate_scored,final_score,integer,YES,null
+candidate_scored,band,text,YES,null
+candidates,id,uuid,NO,gen_random_uuid()
+candidates,user_id,uuid,NO,null
+candidates,organization_id,uuid,NO,null
+candidates,source_email,text,NO,null
+candidates,canonical_day,date,NO,null
+candidates,date_received,timestamp with time zone,NO,now()
+candidates,candidate_name,text,YES,null
+candidates,email_address,text,YES,null
+candidates,contact_number,text,YES,null
+candidates,educational_qualifications_raw,text,YES,null
+candidates,degree_institution_raw,text,YES,null
+candidates,degree_country_raw,text,YES,null
+candidates,has_education_degree,boolean,YES,false
+candidates,qualification_type,text,YES,'Unknown'::text
+candidates,years_teaching_experience,numeric,YES,0
+candidates,teaching_phase_specialisation,text,YES,'Unknown'::text
+candidates,teaching_phase_alignment,text,YES,'unknown'::text
+candidates,has_tefl,boolean,YES,false
+candidates,has_tesol,boolean,YES,false
+candidates,has_celta,boolean,YES,false
+candidates,countries_raw,ARRAY,YES,'{}'::text[]
+candidates,current_location_raw,text,YES,null
+candidates,raw_ai_score,integer,YES,0
+candidates,ai_notes,text,YES,null
+candidates,degree_institution_norm,text,YES,null
+candidates,created_at,timestamp with time zone,NO,now()
+inbound_email_routes,id,uuid,NO,gen_random_uuid()
+inbound_email_routes,source_email,text,NO,null
+inbound_email_routes,user_id,uuid,NO,null
+inbound_email_routes,organization_id,uuid,NO,null
+inbound_email_routes,created_at,timestamp with time zone,NO,now()
+inbound_email_routes,updated_at,timestamp with time zone,NO,now()
+inbound_email_routes,inbox_tz_id,text,NO,'Africa/Johannesburg'::text
+inbound_email_routes,tz_locked,boolean,NO,true
+organizations,id,uuid,NO,gen_random_uuid()
+organizations,name,text,NO,null
+organizations,slug,text,NO,null
+organizations,description,text,YES,null
+organizations,owner_id,uuid,NO,null
+organizations,created_at,timestamp with time zone,NO,now()
+organizations,updated_at,timestamp with time zone,NO,now()
+organizations,vertical,text,YES,'general'::text
+sa_university_variants,id,uuid,NO,gen_random_uuid()
+sa_university_variants,canonical_university,text,NO,null
+sa_university_variants,variant,text,NO,null
+sa_university_variants,norm_variant,text,NO,null

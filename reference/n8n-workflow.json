@@ -1,0 +1,1798 @@
+{
+  "name": "Nicole CV 4.0",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "custom",
+              "cronExpression": "0 30 2 * * *"
+            }
+          ]
+        },
+        "filters": {
+          "q": "has:attachment"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -7232,
+        1184
+      ],
+      "name": "Gmail Trigger",
+      "id": "b8ae287b-e9e9-44e9-a31d-4d9c7a140f7f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "QsXBztaI1wrLAhbW",
+          "name": "NICOLE GMAIL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 30,
+        "simple": false,
+        "filters": {
+          "q": "=={{ $json.q }}"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "=attachment_",
+          "downloadAttachments": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -6784,
+        1184
+      ],
+      "id": "27dd3872-298e-40cc-8f00-9126d13f757b",
+      "name": "List Messages",
+      "webhookId": "320918fc-fdb1-42d9-a94e-032a2ea76526",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "QsXBztaI1wrLAhbW",
+          "name": "NICOLE GMAIL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{$json.id}}",
+        "simple": false,
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -6560,
+        1184
+      ],
+      "id": "121083f6-3ad9-4164-b378-eb10e7a9ea04",
+      "name": "Get Message",
+      "webhookId": "b219c4ed-6d1d-4d43-b366-4db4f1a90655",
+      "retryOnFail": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "QsXBztaI1wrLAhbW",
+          "name": "NICOLE GMAIL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Explode attachments and compute reliable byte length\nconst out = [];\n\nfunction parsedBytes(v) {\n  // 1) numeric already\n  if (typeof v === 'number' && Number.isFinite(v)) return v;\n\n  // 2) string like \"610 kB\", \"35.5 KB\", \"1.2 MB\"\n  if (typeof v === 'string') {\n    const m = v.trim().match(/^([\\d.]+)\\s*([kmgt]?b)$/i); // e.g. \"610 kB\", \"1.2 MB\"\n    if (m) {\n      const n = parseFloat(m[1]);\n      const unit = m[2].toLowerCase();\n      const mul = unit.startsWith('kb') ? 1024\n                : unit.startsWith('mb') ? 1024**2\n                : unit.startsWith('gb') ? 1024**3\n                : 1;\n      return Math.round(n * mul);\n    }\n    // plain integer string\n    const n = Number(v);\n    if (Number.isFinite(n)) return n;\n  }\n  return null;\n}\n\nfor (const it of items) {\n  const binKeys = Object.keys(it.binary || {});\n  if (!binKeys.length) continue;\n\n  for (const key of binKeys) {\n    const bin = it.binary[key] || {};\n\n    // try fileSize first\n    let bytes = parsedBytes(bin.fileSize);\n\n    // fallback: compute from base64 length (data may not exist for very large files, but usually does)\n    if (bytes == null && typeof bin.data === 'string') {\n      const b64 = bin.data;\n      // base64 -> bytes formula\n      bytes = Math.floor((b64.length * 3) / 4) - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);\n    }\n\n    // final fallback\n    if (bytes == null) bytes = 0;\n\n    const mime = bin.mimeType || '';\n    const name = bin.fileName || '';\n\n    out.push({\n      json: {\n        messageId: it.json.id || it.json.messageId,\n        filename: name,\n        mime,\n        _byteLen: bytes,                           // <- reliable byte size\n        _isPdf: mime.toLowerCase().includes('pdf') ||\n                name.toLowerCase().endsWith('.pdf'),\n        _binaryKey: key                            // helpful for debug\n      },\n      binary: { file: bin }                        // keep the binary under a stable key\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6336,
+        1040
+      ],
+      "id": "f9bbebb5-67b2-4dea-aa57-8b813cf35cd6",
+      "name": "Explode Attachments"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.mime}}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "cceed467-6de1-413b-a421-18cda1508f47"
+            },
+            {
+              "id": "854607f7-51b1-465b-a250-1f3a5674ca9d",
+              "leftValue": "={{$json[\"_byteLen\"]}}",
+              "rightValue": 3670016,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5904,
+        1040
+      ],
+      "id": "3957e268-5a4c-43f3-a68d-77df800a4d84",
+      "name": "Is PDF?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.mime}}",
+              "rightValue": "application/msword",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "a6f163cb-8f00-4fb1-b845-394da276089e"
+            },
+            {
+              "leftValue": "={{$json.mime}}",
+              "rightValue": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "id": "e4c35430-2c1e-40c5-a952-4a47c313220c"
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5696,
+        1232
+      ],
+      "id": "b1c44a19-d3e8-40d6-9cb4-cb7611fac368",
+      "name": "Is DOC/DOCX?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use the system instructions to extract candidate data from this CV text and return the JSON object:\n\n{{ $json[\"text\"] || $json[\"body\"] || $json[\"content\"] }}",
+        "options": {
+          "systemMessage": "You are an expert CV parser and education-sector screening assistant.\nYou receive CV text for teaching candidates and must output pure JSON, never prose.\n\nGOAL\n\nExtract the best candidate profile(s) from each CV.\n\nPopulate a fixed JSON schema with:\n\nPersonal details\n\nDegree + institution\n\nTeaching experience\n\nTEFL / TESOL / CELTA flags\n\nA holistic 0–100 score (raw_ai_score) and short notes.\n\nYou do not decide “accept/reject”. The database will do final scoring and gating.\n\nOUTPUT FORMAT\nAlways output a single JSON object:\n\n{\n  \"candidates\": [\n    {\n      \"candidate_name\": \"\",\n      \"email_address\": \"\",\n      \"contact_number\": \"\",\n\n      \"educational_qualifications_raw\": \"\",\n      \"degree_institution_raw\": \"\",\n      \"degree_country_raw\": \"\",\n\n      \"has_education_degree\": false,\n      \"qualification_type\": \"\",\n\n      \"years_teaching_experience\": 0,\n      \"teaching_phase_specialisation\": \"\",\n      \"teaching_phase_alignment\": \"\",\n\n      \"has_tefl\": false,\n      \"has_tesol\": false,\n      \"has_celta\": false,\n\n      \"countries_raw\": [],\n      \"current_location_raw\": \"\",\n\n      \"raw_ai_score\": 0,\n      \"ai_notes\": \"\"\n    }\n  ]\n}\n\n\nRules:\n\ncandidates is always an array (0, 1, or many).\n\nDon’t add extra keys.\n\nUnknown values:\n\nStrings → \"\"\n\nNumbers → 0\n\nBooleans → false\n\nArrays → []\n\nFIELD RULES\n\nPersonal info\n\ncandidate_name: full name as written (no titles like Mr/Ms/Dr).\n\nemail_address: main professional email.\n\ncontact_number: primary teaching contact number (prefer mobile).\n\nEducation\n\neducational_qualifications_raw: copy the full degrees/teaching-qualifications text.\n\ndegree_institution_raw: main degree-granting university for their teaching qualification.\n\ndegree_country_raw: country of that university (if you can infer).\n\nhas_education_degree:\n\ntrue if they clearly have a teaching/education degree: BEd, BA in Education, BSc Education, BCom Education, or similar.\n\nfalse if only non-education degrees or no degree.\n\nqualification_type (one of):\n\n\"BEd\"\n\n\"BA_Education\"\n\n\"BSc_Education\"\n\n\"BCom_Education\"\n\n\"Other\" – teaching-related degree that doesn’t fit above labels (PGCE only, diplomas, etc.)\n\n\"Unknown\" – can’t tell.\n\nTeaching experience\n\nyears_teaching_experience:\n\nTotal years actively teaching, not admin.\n\nUse decimals for fractions (e.g. 1.5).\n\nIf clearly “several years” but not precise, give your best numeric estimate.\n\nteaching_phase_specialisation (one of):\n\n\"Foundation\" – Grade R–3 / early primary.\n\n\"Intermediate\" – roughly Grades 4–6.\n\n\"Senior\" – early high school.\n\n\"FET\" – upper high school / college.\n\n\"Unknown\" – not clear.\n\nteaching_phase_alignment:\n\n\"aligned\" – degree phase matches most teaching work.\n\n\"partial\" – some alignment, but they also teach other levels.\n\n\"not_aligned\" – degree phase and main teaching level are very different.\n\n\"unknown\" – not enough info.\n\nTEFL / TESOL / CELTA\n\nhas_tefl: true if TEFL is explicitly mentioned.\n\nhas_tesol: true if TESOL is explicitly mentioned.\n\nhas_celta: true if CELTA is explicitly mentioned.\n\nCountries & location\n\ncountries_raw: array of all countries linked to:\n\ncitizenship,\n\ndegrees,\n\nmajor teaching posts.\nExample: [\"South Africa\", \"United Arab Emirates\"].\n\ncurrent_location_raw: best guess of where they currently live/work.\n\nRaw AI score (0–100)\n\nraw_ai_score:\n\n0–100 holistic strength as a teaching candidate.\n\nCalibrate:\n\n0–39 → weak / not suitable.\n\n40–59 → marginal; missing key parts.\n\n60–74 → acceptable; meets minimum.\n\n75–89 → strong profile.\n\n90–100 → exceptional.\n\nThis is advisory only – final scoring happens in the database.\n\nai_notes:\n\n1–3 short sentences explaining why you gave that score (degree, institution, years, phase, TEFL etc).\n\nGENERAL RULES\n\nOnly output JSON. No comments, no extra text.\n\nIf this is clearly not a teacher CV, return:\n\n{ \"candidates\": [] }\n\n\nBe conservative if uncertain and explain in ai_notes."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.1,
+      "position": [
+        -4560,
+        1040
+      ],
+      "id": "3c98c46c-b2d0-4ce3-9682-9b11f92ac8af",
+      "name": "AI Agent",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "Upload File to PDF.co",
+        "binaryData": true,
+        "binaryPropertyName": "file",
+        "name": "={{ $json.filename }}"
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1,
+      "position": [
+        -5424,
+        1216
+      ],
+      "id": "5092f34d-ba86-4fcb-8c21-7171dccad774",
+      "name": "PDFco Api",
+      "credentials": {
+        "pdfcoApi": {
+          "id": "QaGumm6e8O8lRn1A",
+          "name": "@ICLOUD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Convert to PDF",
+        "url": "={{ $json.url }}",
+        "advancedOptionsCommon": {}
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1,
+      "position": [
+        -5200,
+        1216
+      ],
+      "id": "6cb4a122-ba4c-4429-8cad-65c3c0440019",
+      "name": "PDFco Api1",
+      "credentials": {
+        "pdfcoApi": {
+          "id": "QaGumm6e8O8lRn1A",
+          "name": "@ICLOUD"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "Convert from PDF",
+        "url": "={{ $json.url }}",
+        "convertType": "toTextSimple",
+        "advancedOptions_TextSimple": {}
+      },
+      "type": "n8n-nodes-pdfco.PDFco Api",
+      "typeVersion": 1,
+      "position": [
+        -4992,
+        1216
+      ],
+      "id": "14f02280-d94f-4576-a832-58b22d47be97",
+      "name": "PDF.co Extract to Text",
+      "credentials": {
+        "pdfcoApi": {
+          "id": "QaGumm6e8O8lRn1A",
+          "name": "@ICLOUD"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -4784,
+        1040
+      ],
+      "id": "b06504b8-7a5f-49da-8f37-8f18967a08a7",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -5024,
+        1024
+      ],
+      "id": "821439da-f5e2-4482-bdff-3f32b43422a3",
+      "name": "Extract from File",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Gmail \"q\" for a single 24h window in your inbox timezone.\n// Default: the previous calendar day. Override via ?day=YYYY-MM-DD.\n\nconst INBOX_TZ   = 'Africa/Johannesburg';   // set to your mailbox local time\nconst DAY_PARAM  = $json.day || '';         // optional override from upstream\nconst now        = new Date();\n\n// Helper to format YYYY/MM/DD for Gmail's after:/before:\nfunction ymd(d, tz=INBOX_TZ) {\n  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' });\n  const [Y,M,D] = fmt.format(d).split('-');\n  return `${Y}/${M}/${D}`;\n}\n\n// Choose which calendar day to fetch:\nlet anchor;\nif (DAY_PARAM) {\n  anchor = new Date(DAY_PARAM + 'T00:00:00');\n} else {\n  // “yesterday” in inbox tz (so the run at 00:05 captures the full previous day)\n  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: INBOX_TZ, year:'numeric', month:'2-digit', day:'2-digit' })\n                  .formatToParts(now);\n  const get = t => parts.find(x => x.type===t).value;\n  const Y = +get('year'), M = +get('month'), D = +get('day');\n  anchor = new Date(Date.UTC(Y, M-1, D));     // today 00:00 in tz\n  anchor = new Date(anchor.getTime() - 24*3600*1000); // yesterday 00:00\n}\n\nconst start = ymd(anchor, INBOX_TZ);                            // YYYY/MM/DD\nconst end   = ymd(new Date(anchor.getTime() + 24*3600*1000), INBOX_TZ);\n\n// Compose your Gmail query. Add your other filters here (attachments, types, etc.)\nconst baseFilters = [\n  'in:inbox',\n  'has:attachment',\n  'filename:(pdf OR doc OR docx OR rtf)',\n  '-filename:(png jpg jpeg gif heic heif webp svg)',\n  '-filename:(certificate cert transcripts transcript \"academic record\" results diploma degree sace pgce tefl \"cover letter\" \"recommendation letter\" \"reference letter\" \"experience letter\" \"registration form\" passport id image photo)'\n];\n\nconst q = `${baseFilters.join(' ')} after:${start} before:${end}`;\n\nreturn [{ json: { q, window_start: start, window_end: end } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7008,
+        1184
+      ],
+      "id": "af30a4a9-f79e-4164-a2c4-1ae3d6a18feb",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: keep only document-type attachments (pdf/doc/docx/rtf)\nconst items = $input.all();\n\nconst ALLOWED_EXTS = new Set(['pdf','doc','docx','rtf']);\nconst ALLOWED_MIMES = new Set([\n  'application/pdf',\n  'application/msword',\n  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n  'application/rtf',\n  'text/rtf',\n  'application/x-pdf',\n  'application/octet-stream', // common fallback from some mailers\n]);\n\nfunction isDocAttachment(binary) {\n  if (!binary) return false;\n  const name = String(binary.fileName || '');\n  const ext = (name.split('.').pop() || '').toLowerCase();\n  const mime = (binary.mimeType || '').toLowerCase();\n  return ALLOWED_EXTS.has(ext) || ALLOWED_MIMES.has(mime);\n}\n\nconst out = [];\n\nfor (const item of items) {\n  const binaries = item.binary || {};\n  const keep = {};\n  for (const k of Object.keys(binaries)) {\n    if (isDocAttachment(binaries[k])) keep[k] = binaries[k];\n  }\n  if (Object.keys(keep).length) {\n    out.push({ json: item.json, binary: keep });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5248,
+        1024
+      ],
+      "id": "5d7fb06b-9a0b-402e-891b-3ba48be9270a",
+      "name": "STRIP ONLY CV"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://fjkskuknvofmsrocoaws.supabase.co/functions/v1/n8n-ingest-candidates",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3072,
+        1184
+      ],
+      "id": "a9106d5a-b467-4ae6-aec6-2508a56c8350",
+      "name": "HTTP Request2",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/*********************************************************\n * Pair Sender Email ↔ Canonical Day (NO TZ CONVERSIONS)\n * - Finds \"Date\" and \"From\" in common header spots\n * - Preserves the literal header date; extracts YYYY-MM-DD only\n * - Sender email is parsed from From header (Name <email@...>)\n **********************************************************/\n\nconst MONTHS = {\n  jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06',\n  jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12'\n};\n\nfunction toYMD(dateText) {\n  if (typeof dateText !== 'string') return '';\n  const m = dateText.match(/(?:^|,|\\s)(\\d{1,2})\\s+([A-Za-z]{3})\\s+(\\d{4})(?:\\s|,|$)/);\n  if (!m) return '';\n  const dd = String(m[1]).padStart(2, '0');\n  const mm = MONTHS[m[2].toLowerCase()];\n  const yyyy = m[3];\n  return mm ? `${yyyy}-${mm}-${dd}` : '';\n}\n\nfunction extractEmail(fromVal) {\n  if (typeof fromVal !== 'string') return '';\n  // Prefer <email@...>\n  const angle = fromVal.match(/<\\s*([^>]+)\\s*>/);\n  if (angle && angle[1]) return angle[1].trim();\n  // Fallback: lone email in string\n  const bare = fromVal.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\n  return bare ? bare[0].trim() : '';\n}\n\nfunction headerFromArray(arr, name) {\n  if (!Array.isArray(arr)) return '';\n  const hit = arr.find(h => h && typeof h.name === 'string' && h.name.toLowerCase() === name);\n  return hit && typeof hit.value === 'string' ? hit.value : '';\n}\n\nfunction headerFromObject(obj, name) {\n  if (!obj || typeof obj !== 'object') return '';\n  const key = Object.keys(obj).find(k => k.toLowerCase() === name);\n  return key ? (typeof obj[key] === 'string' ? obj[key] : '') : '';\n}\n\nfunction getHeader(j, name) {\n  // Common spots only (keep it simple but practical)\n  // 1) payload.headers: [{name,value}]\n  let v = headerFromArray(j?.payload?.headers, name);\n  if (v) return v;\n\n  // 2) headers: [{name,value}] OR headers: {Date:\"\", From:\"\"}\n  v = headerFromArray(j?.headers, name);\n  if (v) return v;\n  v = headerFromObject(j?.headers, name);\n  if (v) return v;\n\n  // 3) top-level keys \"Date\"/\"From\"\n  if (typeof j?.[name] === 'string') return j[name];\n\n  return '';\n}\n\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json ?? it;\n\n  const rawDate = getHeader(j, 'date');\n  const rawFrom = getHeader(j, 'from');\n\n  const canonical_day = toYMD(rawDate);\n  const sender_email = extractEmail(rawFrom);\n\n  out.push({\n    json: {\n      sender_email: sender_email || '',\n      date_received_header: rawDate || '',\n      canonical_day: canonical_day || '',\n      debug: {\n        note: 'Canonical day derived from literal Date header only. No timezone math.',\n        raw_from: rawFrom || ''\n      }\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5648,
+        1920
+      ],
+      "id": "25fbd5f0-cf4e-4747-b00b-9d9e3c95672b",
+      "name": "Extract Date | SAST TIME"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only CV/resume/CV-like docs; block certificates/letters/IDs/etc.\n// Place right after \"Explode Attachments\". Expects each item to have:\n//   json.messageId  (or json.id)\n//   json.filename\n//   binary.<key>    (attachment)\n// This version also computes reliable byte length and writes it back as json._byteLen.\n\nconst items = $input.all();\n\nconst ALLOWED_EXTS = new Set(['pdf','doc','docx','rtf']);\nconst POS_RX = /\\b(cv|c\\.v\\.|resume|resumé|curriculum[\\s_-]?vitae)\\b/i;\nconst NEG_RX = /\\b(certificate|cert\\b|transcript|results|record|diploma|degree|sace|pgce|tefl|tesol|passport|id\\b|identity|registration|form|application|reference|recommendation|testimonial|cover[\\s_-]*letter|experience[\\s_-]*letter|letter)\\b/i;\n\n// Heuristic: keep \"reasonably sized\" docs; adjust if needed.\nconst MIN_BYTES = 40 * 1024;       // 40 KB\nconst MAX_BYTES = 6 * 1024 * 1024; // 6 MB\nconst MAX_KEEP_PER_MESSAGE = 2;    // pass at most this many CVs per message\n\nfunction firstBinary(it) {\n  if (!it.binary) return { bin: null, key: null };\n  if (it.binary.file) return { bin: it.binary.file, key: 'file' };\n  const k = Object.keys(it.binary)[0];\n  return { bin: it.binary[k] || null, key: k || null };\n}\nfunction extOf(name) {\n  const n = (name || '').toLowerCase();\n  const i = n.lastIndexOf('.');\n  return i >= 0 ? n.slice(i+1) : '';\n}\nfunction toInt(n, fallback=0){ const v = Number(n); return Number.isFinite(v) ? v : fallback; }\n\n// Try multiple sources to get size; fall back to buffer length if available.\nfunction computeSize(it, bin) {\n  // 1) binary.fileSize if present (Gmail \"Get Message\" usually has it)\n  const byMeta = toInt(bin && bin.fileSize, 0);\n\n  // 2) earlier JSON probe (from your explode step)\n  const byJson = toInt(it.json && it.json._byteLen, 0);\n\n  // 3) as a last resort, if we have data, count bytes (n8n stores base64 sometimes)\n  let byBuf = 0;\n  try {\n    if (bin && bin.data) {\n      // if base64 string:\n      const b64 = String(bin.data);\n      // base64 bytes = floor(len*3/4) minus padding, but we can be approximate:\n      byBuf = Math.floor(b64.length * 3 / 4);\n    }\n  } catch {}\n\n  return Math.max(byMeta, byJson, byBuf, 0);\n}\n\nfunction scoreCVLikely(name, mime, size) {\n  let s = 0;\n  const ext = extOf(name);\n  if (ALLOWED_EXTS.has(ext)) s += 2;\n  if (/wordprocessingml/.test(mime) || /msword/.test(mime) || /pdf/.test(mime)) s += 2;\n  if (size >= MIN_BYTES && size <= MAX_BYTES) s += 2;\n\n  if (POS_RX.test(name)) s += 6;\n  if (NEG_RX.test(name)) s -= 8;\n\n  if (/template|form/i.test(name)) s -= 3;\n  if (/cv/i.test(name)) s += 1;\n  if (/resume/i.test(name)) s += 1;\n\n  return s;\n}\n\n// Group by message\nconst byMsg = new Map();\nfor (const it of items) {\n  const j = it.json || {};\n  const msgId = j.messageId || j.id || j.threadId || 'unknown';\n  if (!byMsg.has(msgId)) byMsg.set(msgId, []);\n  byMsg.get(msgId).push(it);\n}\n\nconst out = [];\n\nfor (const [msgId, arr] of byMsg.entries()) {\n  // Map + enrich\n  const docs = arr.map(it => {\n    const { bin, key } = firstBinary(it);\n    const name = String((it.json && it.json.filename) || (bin && bin.fileName) || '');\n    const mime = (bin && bin.mimeType) || '';\n    const size = computeSize(it, bin);\n    const ext  = extOf(name);\n    return {\n      it, bin, key, name, mime, size, ext,\n      allowed: ALLOWED_EXTS.has(ext),\n      keepHard: POS_RX.test(name),\n      blockHard: NEG_RX.test(name),\n    };\n  }).filter(d => d.allowed && d.bin);\n\n  // Size filter (hard): outside min/max, drop early\n  const sized = docs.filter(d => d.size >= MIN_BYTES && d.size <= MAX_BYTES);\n\n  // Hard block negative tokens\n  const notBlocked = sized.filter(d => !d.blockHard);\n\n  // Prefer explicit positives\n  let keep = notBlocked.filter(d => d.keepHard);\n\n  // If none explicit, score by heuristics\n  if (keep.length === 0) {\n    const scored = notBlocked.map(d => ({...d, score: scoreCVLikely(d.name, d.mime, d.size)}));\n    scored.sort((a,b) => b.score - a.score);\n    keep = scored.filter(x => x.score >= 0).slice(0, MAX_KEEP_PER_MESSAGE);\n    if (keep.length === 0 && scored.length > 0) keep = [scored[0]];\n  } else {\n    keep = keep.slice(0, MAX_KEEP_PER_MESSAGE);\n  }\n\n  // Write computed fields back onto kept items & push\n  for (const k of keep) {\n    k.it.json = k.it.json || {};\n    k.it.json._byteLen = k.size;\n    k.it.json._isPdf   = /pdf$/i.test(k.ext);\n    if (k.key) k.it.json._binaryKey = k.key;\n    out.push(k.it);\n  }\n}\n\nconsole.log('=== CV FILTER AUDIT ===');\nconsole.log('Total messages processed:', byMsg.size);\nconsole.log('Total attachments kept:', out.length);\nfor (const [msgId, arr] of byMsg.entries()) {\n  const docs = arr.map(it => {\n    const { bin } = firstBinary(it);\n    const name = String((it.json && it.json.filename) || (bin && bin.fileName) || '');\n    const size = computeSize(it, bin);\n    return { name, size, kept: out.some(o => o.json.filename === name) };\n  });\n  console.log(`Message ${msgId}:`, JSON.stringify(docs, null, 2));\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6128,
+        1040
+      ],
+      "id": "b83efcc5-36f8-45e9-a586-29876c5a8128",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -4560,
+        1216
+      ],
+      "id": "cef9251d-c896-4a6a-8121-eca648882cf1",
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "ecZnAUMEtIezOdSe",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/*********************************************************\n * n8n Code Node — Email Extractor + Cross-Reference\n *\n * PURPOSE\n * 1) Extract ALL email addresses from incoming items' text fields.\n * 2) Parse DeepSeek’s sentinel-wrapped JSON (from a sibling/previous node).\n * 3) Cross-reference:\n *    - emails_in_source_not_in_model\n *    - emails_in_model_not_in_source\n *    - matched_emails\n * 4) Annotate each candidate with `email_in_source: true|false`\n *\n * HOW TO WIRE\n * - Connect your raw message/CV/text items into THIS Code node.\n * - Also connect the DeepSeek LLM node output into this node (Merge → Multiplex\n *   or direct multi-input connection). This code auto-detects DS payload.\n *\n * WHAT IT ACCEPTS\n * - Any item containing text in common fields:\n *   body, text, content, html, snippet, message, raw, cv, resume, etc.\n * - DeepSeek output either as a plain string with sentinels:\n *     <<<JSON\n *     { \"candidates\":[ ... ] }\n *     JSON>>>\n *   or nested anywhere as a string field with those sentinels.\n *\n * OUTPUT\n * {\n *   extracted_emails: string[],\n *   model_emails: string[],\n *   matched_emails: string[],\n *   emails_in_source_not_in_model: string[],\n *   emails_in_model_not_in_source: string[],\n *   candidates: [\n *     {\n *       ...original_candidate,\n *       email_in_source: boolean\n *     }\n *   ]\n * }\n **********************************************************/\n\n/* ============================\n   Helpers\n   ============================ */\nconst toStr = (v) => {\n  if (v == null) return '';\n  if (typeof v === 'string') return v;\n  if (typeof v === 'number') return String(v);\n  if (typeof v === 'object') {\n    try { return JSON.stringify(v); } catch { return ''; }\n  }\n  return '';\n};\n\n// Very permissive email regex (captures most valid forms, ignores trailing punctuation)\nconst EMAIL_RE = /([a-zA-Z0-9_.+\\-']+@[a-zA-Z0-9\\-.]+\\.[a-zA-Z]{2,})/g;\n\n// Extract emails from a string safely\nfunction extractEmailsFromText(txt) {\n  const found = new Set();\n  if (!txt || typeof txt !== 'string') return [];\n  const cleaned = txt\n    // strip common HTML tags to reduce noise; keep text\n    .replace(/<[^>]+>/g, ' ')\n    // decode some common entities\n    .replace(/&nbsp;|&#160;/g, ' ')\n    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');\n  let m;\n  while ((m = EMAIL_RE.exec(cleaned)) !== null) {\n    // trim trailing punctuation\n    const email = m[1].replace(/[),;:]+$/g, '').toLowerCase();\n    if (email) found.add(email);\n  }\n  return Array.from(found);\n}\n\n// Walks an object tree and returns all string values (for DS payload discovery)\nfunction walkStrings(obj, out = []) {\n  if (obj == null) return out;\n  if (typeof obj === 'string') {\n    out.push(obj);\n  } else if (Array.isArray(obj)) {\n    for (const v of obj) walkStrings(v, out);\n  } else if (typeof obj === 'object') {\n    for (const k of Object.keys(obj)) walkStrings(obj[k], out);\n  }\n  return out;\n}\n\n// Attempt to find DeepSeek sentinel JSON in any string field of any item\nfunction findDeepSeekJSON(allItems) {\n  const SENT_START = '<<<JSON';\n  const SENT_END = 'JSON>>>';\n  for (const itm of allItems) {\n    const strings = walkStrings(itm.json ?? itm);\n    for (const s of strings) {\n      if (typeof s !== 'string') continue;\n      const startIdx = s.indexOf(SENT_START);\n      const endIdx = s.lastIndexOf(SENT_END);\n      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {\n        const inner = s.slice(startIdx + SENT_START.length, endIdx).trim();\n        try {\n          const parsed = JSON.parse(inner);\n          if (parsed && Array.isArray(parsed.candidates)) return parsed;\n        } catch {\n          // keep scanning\n        }\n      }\n    }\n  }\n  return null;\n}\n\n// From a candidate object (DeepSeek schema), pull email field defensively\nfunction getCandidateEmail(c) {\n  const raw = (c && (c.email_address ?? c.email ?? c.contact_email ?? '')) || '';\n  return toStr(raw).trim().toLowerCase();\n}\n\n/* ============================\n   Collect inputs\n   ============================ */\nconst items = $input.all();\n\n// 1) Extract emails from every incoming item\nconst textFields = [\n  'body', 'text', 'content', 'html', 'snippet',\n  'message', 'raw', 'cv', 'resume', 'extracted', 'extracted_text'\n];\n\nconst sourceEmailsSet = new Set();\n\nfor (const itm of items) {\n  const j = itm.json ?? {};\n  // Pull from known fields\n  for (const key of textFields) {\n    if (j[key]) {\n      for (const e of extractEmailsFromText(toStr(j[key]))) {\n        sourceEmailsSet.add(e);\n      }\n    }\n  }\n  // Also scan entire item as a fallback\n  const asStringDump = toStr(j);\n  for (const e of extractEmailsFromText(asStringDump)) {\n    sourceEmailsSet.add(e);\n  }\n}\n\nconst extracted_emails = Array.from(sourceEmailsSet);\n\n// 2) Find DeepSeek JSON in ANY input (supports multi-source wiring)\nconst ds = findDeepSeekJSON(items);\nconst candidates = Array.isArray(ds?.candidates) ? ds.candidates : [];\n\n// 3) Build model email list (unique)\nconst modelEmailsSet = new Set();\nfor (const c of candidates) {\n  const em = getCandidateEmail(c);\n  if (em) modelEmailsSet.add(em);\n}\nconst model_emails = Array.from(modelEmailsSet);\n\n// 4) Cross-reference\nconst extractedSet = new Set(extracted_emails);\nconst modelSet = new Set(model_emails);\n\nconst matched_emails = Array.from(modelSet).filter(e => extractedSet.has(e));\nconst emails_in_source_not_in_model = Array.from(extractedSet).filter(e => !modelSet.has(e));\nconst emails_in_model_not_in_source = Array.from(modelSet).filter(e => !extractedSet.has(e));\n\n// 5) Annotate candidates with a boolean flag\nconst annotatedCandidates = candidates.map(c => {\n  const em = getCandidateEmail(c);\n  return {\n    ...c,\n    email_in_source: em ? extractedSet.has(em) : false,\n  };\n});\n\n// 6) Output one consolidated object\nreturn [\n  {\n    json: {\n      extracted_emails,\n      model_emails,\n      matched_emails,\n      emails_in_source_not_in_model,\n      emails_in_model_not_in_source,\n      candidates: annotatedCandidates,\n      stats: {\n        total_source_emails: extracted_emails.length,\n        total_model_emails: model_emails.length,\n        total_matched: matched_emails.length,\n        total_candidates: annotatedCandidates.length,\n      }\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6336,
+        1488
+      ],
+      "id": "395afef4-7a18-486d-b2c6-3c2ddb6eb770",
+      "name": "extracted email"
+    },
+    {
+      "parameters": {
+        "jsCode": "/*********************************************************\n * DB Payload Builder — RESILIENT SENDER FALLBACK\n * - Prefer upstream sender_email.\n * - Fallback to \"From:\" header (debug.raw_from).\n * - Finally fallback to candidate.email_address.\n * - Minimal header-date cleanup so Postgres timestamptz accepts it.\n * - Skips rows that would violate DB NOT NULL constraints.\n * - Keeps raw header verbatim as date_received_header_raw.\n **********************************************************/\n\nconst USER_ID = '01857963-443c-4f41-a26a-4298d6ab0a11';\nconst ORG_ID  = 'b6ca0535-6778-4f41-a26a-4298d6ab0a78';\n\n// ---------- helpers ----------\nfunction pickCandidateShape(row) {\n  // Accept either { candidate: {...}, sender_email, ... } or flat shape\n  if (row && typeof row.candidate === 'object' && row.candidate) {\n    return row.candidate;\n  }\n  return row || {};\n}\n\nfunction isGhostCandidate(c) {\n  const name = String(c.candidate_name || '').trim();\n  const email = String(c.email_address || '').trim();\n  const phone = String(c.contact_number || '').trim();\n  return !name && !email && !phone;\n}\n\nfunction toNumberOrZero(n) {\n  const x = Number(n);\n  return Number.isFinite(x) ? x : 0;\n}\n\nfunction toBool(b) {\n  return !!b;\n}\n\n// Extract first valid email address from a string (e.g., \"Name <user@x.com>\")\nfunction parseEmail(addr) {\n  if (typeof addr !== 'string') return null;\n  const m = addr.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\n  return m ? m[0].toLowerCase() : null;\n}\n\n// Make header acceptable to Postgres timestamptz\n// Examples in your input:\n// \"Date: Sun, 9 Nov 2025 22:41:16 +0000 (UTC)\" -> \"Sun, 9 Nov 2025 22:41:16 +0000\"\n// \"Date: Sun, 9 Nov 2025 21:05:02 +0200\"      -> \"Sun, 9 Nov 2025 21:05:02 +0200\"\nfunction cleanHeaderForPgTimestamptz(header) {\n  if (typeof header !== 'string') return null;\n  let s = header.trim();\n  if (!s) return null;\n  s = s.replace(/^Date:\\s*/i, '');\n  // drop one trailing parenthetical timezone note if present\n  s = s.replace(/\\s*\\([^)]*\\)\\s*$/, '');\n  s = s.trim();\n  return s || null;\n}\n\n// ---------- build ----------\nconst out = [];\nconst candidates = [];\nlet seen = 0;\nlet kept = 0;\nlet skipped_missing_source = 0;\nlet skipped_ghost = 0;\n\nfor (const it of items) {\n  const j = it.json || {};\n  // The Merge node may pass a single envelope+candidate per item\n  // OR the flatten step might not have happened yet and you have arrays.\n  // Handle both: if an array payload exists, iterate it; else treat as single.\n  const rows = Array.isArray(j) ? j : [j];\n\n  for (const row of rows) {\n    seen++;\n\n    const c = pickCandidateShape(row);\n    if (isGhostCandidate(c)) {\n      skipped_ghost++;\n      continue;\n    }\n\n    // --- RESILIENT sender derivation ---\n    // Priority: explicit sender_email -> debug.raw_from -> candidate.email_address\n    const sender =\n      parseEmail(row.sender_email) ||\n      parseEmail(row.debug && row.debug.raw_from) ||\n      parseEmail(c.email_address) ||\n      null;\n\n    // If DB has NOT NULL on source_email, skip rows that would fail insert\n    if (!sender) {\n      skipped_missing_source++;\n      continue;\n    }\n\n    const canonical_day =\n      (typeof row.canonical_day === 'string' && row.canonical_day.trim())\n        ? row.canonical_day.trim()\n        : null;\n\n    const date_received_header_raw =\n      (typeof row.date_received_header === 'string' && row.date_received_header.trim())\n        ? row.date_received_header.trim()\n        : null;\n\n    // Minimal cleaning for Postgres timestamptz\n    const date_received = cleanHeaderForPgTimestamptz(date_received_header_raw);\n\n    // Build candidate payload for your HTTP function\n    candidates.push({\n      // identity envelope\n      user_id: USER_ID,\n      organization_id: ORG_ID,\n\n      // upstream envelope meta\n      source_email: sender,\n      canonical_day,                     // keep as-is (YYYY-MM-DD per your upstream)\n      date_received,                     // cleaned, parseable by timestamptz\n      date_received_header_raw,          // optional: raw header, store in a TEXT column if desired\n\n      // candidate profile card fields — STRICT PASS-THROUGH for everything else\n      candidate_name: String(c.candidate_name || ''),\n      email_address: String(c.email_address || ''),\n      contact_number: String(c.contact_number || ''),\n\n      educational_qualifications_raw: String(c.educational_qualifications_raw || ''),\n      degree_institution_raw: String(c.degree_institution_raw || ''),\n      degree_country_raw: String(c.degree_country_raw || ''),\n\n      has_education_degree: toBool(c.has_education_degree),\n      qualification_type: String(c.qualification_type || 'Unknown'),\n\n      years_teaching_experience: toNumberOrZero(c.years_teaching_experience),\n\n      teaching_phase_specialisation: String(c.teaching_phase_specialisation || 'Unknown'),\n      teaching_phase_alignment: String(c.teaching_phase_alignment || 'unknown'),\n\n      has_tefl: toBool(c.has_tefl),\n      has_tesol: toBool(c.has_tesol),\n      has_celta: toBool(c.has_celta),\n\n      countries_raw: Array.isArray(c.countries_raw) ? c.countries_raw : [],\n      current_location_raw: String(c.current_location_raw || ''),\n\n      raw_ai_score: toNumberOrZero(c.raw_ai_score),\n      ai_notes: String(c.ai_notes || ''),\n    });\n\n    kept++;\n  }\n}\n\n// single output item for the HTTP Request node\nout.push({\n  json: {\n    candidates,\n    stats: {\n      total_incoming_items: items.length,\n      total_rows_seen: seen,\n      total_candidates: candidates.length,\n      skipped_missing_source_email: skipped_missing_source,\n      skipped_placeholder_rows: skipped_ghost,\n      generated_at: new Date().toISOString(),\n    },\n  },\n});\n\nconsole.log('=== DB PAYLOAD BUILDER AUDIT ===');\nconsole.log('Stats:', JSON.stringify({ seen, kept, skipped_missing_source, skipped_ghost }, null, 2));\nconsole.log('Candidate names:', candidates.map(c => c.candidate_name).join(', '));\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3328,
+        1328
+      ],
+      "id": "cbd09419-6fc7-4c67-85cb-a0ec0bd89a4d",
+      "name": "DB Payload Builder"
+    },
+    {
+      "parameters": {
+        "jsCode": "/*********************************************************\n * SIMPLE: Mixed (candidates + headers) → one item per candidate\n * - Works with your mixed array (like in the screenshots)\n * - Pulls email from ANY candidate string field\n * - If no email, loosely matches candidate_name to header.raw_from\n * - For headers, keeps the latest (by Date header) per email\n **********************************************************/\n\n// -------- helpers --------\nconst EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/ig;\n\nfunction parseEmailOne(s) {\n  if (typeof s !== 'string') return null;\n  const m = s.match(EMAIL_RE);\n  return m && m.length ? m[0].toLowerCase() : null;\n}\nfunction parseAllEmails(s) {\n  if (typeof s !== 'string') return [];\n  const m = s.match(EMAIL_RE);\n  return (m || []).map(e => e.toLowerCase());\n}\n\nfunction cleanHeaderForPgTimestamptz(header) {\n  if (typeof header !== 'string') return null;\n  let s = header.trim();\n  if (!s) return null;\n  s = s.replace(/^Date:\\s*/i, '');\n  s = s.replace(/\\s*\\([^)]*\\)\\s*$/, ''); // strip trailing \"(UTC)\" etc\n  s = s.trim();\n  return s || null;\n}\nfunction epochFromHeader(header) {\n  const cleaned = cleanHeaderForPgTimestamptz(header);\n  if (!cleaned) return 0;\n  const t = Date.parse(cleaned);\n  return Number.isFinite(t) ? t : 0;\n}\n\nfunction foldStrings(obj, acc = []) {\n  if (obj == null) return acc;\n  if (typeof obj === 'string') { acc.push(obj); return acc; }\n  if (Array.isArray(obj)) { for (const v of obj) foldStrings(v, acc); return acc; }\n  if (typeof obj === 'object') {\n    for (const v of Object.values(obj)) foldStrings(v, acc);\n    return acc;\n  }\n  return acc;\n}\n\n// very light name normalizer and matcher\nfunction normName(s) {\n  if (typeof s !== 'string') return '';\n  return s.toLowerCase().replace(/[^a-z\\s]/g, ' ').replace(/\\s+/g, ' ').trim();\n}\nfunction extractNameFromRawFrom(rawFrom) {\n  // e.g. \"From: Ryan Le Roux <lerouxryan9919@gmail.com>\"\n  if (typeof rawFrom !== 'string') return '';\n  // take content before <...> if present, otherwise whole\n  const m = rawFrom.match(/^(.*?)(<|$)/);\n  return normName(m ? m[1] : rawFrom);\n}\nfunction looseNameMatch(candidateName, headerName) {\n  const c = normName(candidateName);\n  const h = normName(headerName);\n  if (!c || !h) return false;\n  // require at least one shared token (prefer 2+, but keep simple)\n  const ctoks = new Set(c.split(' ').filter(Boolean));\n  let hits = 0;\n  for (const t of h.split(' ').filter(Boolean)) {\n    if (ctoks.has(t)) { hits++; if (hits >= 2) return true; }\n  }\n  return hits >= 1; // 1 token fallback (e.g., rare surnames)\n}\n\n// -------- split inputs into headers vs candidates --------\nconst headers = [];\nconst candidates = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const looksLikeHeader =\n    j.sender_email || j.date_received_header || j.canonical_day || (j.debug && j.debug.raw_from);\n\n  if (looksLikeHeader) {\n    const join_email =\n      (typeof j.join_email === 'string' && j.join_email.toLowerCase()) ||\n      parseEmailOne(j.sender_email) ||\n      parseEmailOne(j.debug && j.debug.raw_from) ||\n      null;\n\n    headers.push({\n      join_email,\n      sender_email: j.sender_email || null,\n      canonical_day: j.canonical_day || null,\n      date_received_header: j.date_received_header || null,\n      raw_from: j.debug && j.debug.raw_from ? String(j.debug.raw_from) : '',\n      _epoch: epochFromHeader(j.date_received_header),\n    });\n    continue;\n  }\n\n  if (j && j.candidate) {\n    candidates.push(j.candidate);\n  }\n}\n\n// -------- keep the latest header per email --------\nconst headerByEmail = new Map();\nfor (const h of headers) {\n  if (!h.join_email) continue;\n  const prev = headerByEmail.get(h.join_email);\n  if (!prev || h._epoch >= prev._epoch) headerByEmail.set(h.join_email, h);\n}\n\n// Also index headers by *name* (for name-based rescue)\nconst headersByName = [];\nfor (const h of headers) {\n  headersByName.push({\n    name: extractNameFromRawFrom(h.raw_from),\n    h,\n  });\n}\n\n// -------- build output per candidate --------\nconst out = [];\n\nfor (const c of candidates) {\n  // 1) find email anywhere in the candidate object\n  let join_email =\n    parseEmailOne(c.email_address) ||\n    null;\n\n  if (!join_email) {\n    // scan all strings in candidate for any email; pick first\n    const allStrings = foldStrings(c, []);\n    for (const s of allStrings) {\n      const e = parseEmailOne(s);\n      if (e) { join_email = e; break; }\n    }\n  }\n\n  // 2) header by email\n  let h = join_email ? headerByEmail.get(join_email) : undefined;\n\n  // 3) if still no header, try loose name match (only if exactly one good hit)\n  if (!h) {\n    const cname = c.candidate_name || '';\n    const matches = headersByName.filter(x => looseNameMatch(cname, x.name));\n    if (matches.length === 1) h = matches[0].h;\n  }\n\n  const date_received_clean = h ? cleanHeaderForPgTimestamptz(h.date_received_header) : null;\n\n  out.push({\n    json: {\n      // header bits (may be null)\n      sender_email: h ? h.sender_email : null,\n      canonical_day: h ? h.canonical_day : null,\n      date_received_header: h ? h.date_received_header : null,\n      date_received: date_received_clean,\n\n      // candidate payload intact\n      candidate: c,\n\n      // final join key we used (helps debugging)\n      join_email: join_email || (h ? h.join_email : null),\n    }\n  });\n}\n\n// (optional) stats row\nout.push({\n  json: {\n    _stats: {\n      headers_in: headers.length,\n      candidates_in: candidates.length,\n      distinct_header_emails: headerByEmail.size,\n      merged_out: out.length - 1,\n      generated_at: new Date().toISOString(),\n    }\n  }\n});\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3744,
+        1056
+      ],
+      "id": "0d0ccd55-6570-4ac9-ac6c-80f8d8dafeac",
+      "name": "flatten"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: many items like { sender_email, date_received_header, canonical_day, debug:{raw_from} }\nfunction parseEmail(s) {\n  if (typeof s !== 'string') return null;\n  const m = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\n  return m ? m[0].toLowerCase() : null;\n}\n\nreturn items.map(it => {\n  const h = it.json || {};\n  const join_email =\n    parseEmail(h.sender_email) ||\n    parseEmail(h.debug && h.debug.raw_from) ||\n    null; // Ryan is covered via raw_from\n\n  return { json: { ...h, join_email } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4240,
+        1584
+      ],
+      "id": "89d7f447-cdbf-4861-af8a-4bbc923f1b48",
+      "name": "join email"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Candidates & Split — works across ALL incoming items\n\nfunction stripFence(s) {\n  if (typeof s !== 'string') return s;\n  // remove leading ```json or ``` and trailing ```\n  return s\n    .replace(/^\\s*```json\\s*/i, '')\n    .replace(/^\\s*```\\s*/i, '')\n    .replace(/\\s*```s*$/i, '')\n    .trim();\n}\n\nfunction parseJsonMaybe(v) {\n  if (!v) return null;\n  if (Array.isArray(v.candidates)) return v;                 // already parsed\n  if (typeof v.output === 'string' && v.output.trim()) {\n    const txt = stripFence(v.output.trim());\n    try { return JSON.parse(txt); } catch { return null; }\n  }\n  return null;\n}\n\nfunction parseEmail(s) {\n  if (typeof s !== 'string') return null;\n  const m = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i);\n  return m ? m[0].toLowerCase() : null;\n}\n\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n\n  // Case A: already a single candidate object\n  if (j && typeof j.candidate === 'object' && j.candidate) {\n    const c = j.candidate;\n    out.push({ json: { candidate: c, join_email: parseEmail(c.email_address) || null } });\n    continue;\n  }\n\n  // Case B: parsed structure has candidates:[...]\n  const maybe = parseJsonMaybe(j);\n  if (maybe && Array.isArray(maybe.candidates)) {\n    for (const c of maybe.candidates) {\n      out.push({ json: { candidate: c, join_email: parseEmail(c.email_address) || null } });\n    }\n  }\n}\n\n// optional: quick count item for debugging\nout.push({ json: { _stats: { emitted_candidates: out.length } } });\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        1040
+      ],
+      "id": "05e57cea-050f-4079-b903-de6845fcc2de",
+      "name": "Parse Candidates & Split"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3968,
+        1056
+      ],
+      "id": "89a681eb-cbde-44f7-ba97-9d5182a62239",
+      "name": "Merge3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3616,
+        1904
+      ],
+      "id": "a039c8b9-06d1-4731-a2f0-fbf7dc1d7aa2",
+      "name": "Merge4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine ferreira';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const from = String(j.from || '').toLowerCase();\n  const subject = String(j.subject || '').toLowerCase();\n  \n  const hasTarget = from.includes(TARGET) || subject.includes(TARGET);\n  \n  if (hasTarget) {\n    console.log('🔍 FOUND CHRISTINE at Gmail Fetch:', JSON.stringify({\n      messageId: j.id,\n      from: j.from,\n      subject: j.subject,\n      date: j.date,\n      attachmentCount: Object.keys(it.binary || {}).length\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconsole.log(`LOG 1: Total messages: ${items.length}, Christine found: ${out.filter(it => {\n  const j = it.json || {};\n  const from = String(j.from || '').toLowerCase();\n  const subject = String(j.subject || '').toLowerCase();\n  return from.includes(TARGET) || subject.includes(TARGET);\n}).length}`);\n\nreturn out;"
+      },
+      "id": "7ee245f6-cce6-4f5a-b52f-043a41c894f7",
+      "name": "LOG 1: After Gmail Fetch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6288,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine ferreira';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const filename = String(j.filename || '').toLowerCase();\n  \n  if (filename.includes('christine') || filename.includes('ferreira')) {\n    console.log('🔍 CHRISTINE PASSED filename filter:', JSON.stringify({\n      filename: j.filename,\n      messageId: j.messageId,\n      size: j._byteLen,\n      mime: j.mime\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconst christineCount = out.filter(it => {\n  const filename = String((it.json || {}).filename || '').toLowerCase();\n  return filename.includes('christine') || filename.includes('ferreira');\n}).length;\n\nconsole.log(`LOG 2: Total files after filter: ${items.length}, Christine files: ${christineCount}`);\n\nreturn out;"
+      },
+      "id": "ca226c71-84c3-437d-8cd0-b3e50ce83c78",
+      "name": "LOG 2: After Filename Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5824,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const filename = String(j.filename || '').toLowerCase();\n  \n  if (filename.includes(TARGET) || filename.includes('ferreira')) {\n    console.log('🔍 CHRISTINE PASSED PDF check:', JSON.stringify({\n      filename: j.filename,\n      mime: j.mime,\n      size: j._byteLen,\n      isPdf: j._isPdf\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconst christineCount = out.filter(it => {\n  const filename = String((it.json || {}).filename || '').toLowerCase();\n  return filename.includes(TARGET) || filename.includes('ferreira');\n}).length;\n\nconsole.log(`LOG 3: Total files after PDF check: ${items.length}, Christine files: ${christineCount}`);\n\nreturn out;"
+      },
+      "id": "4a1de67d-68e4-4f9c-9c59-196a800becc7",
+      "name": "LOG 3: After PDF Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5536,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const text = String(j.text || j.body || j.content || '').toLowerCase();\n  \n  if (text.includes(TARGET) && text.includes('ferreira')) {\n    console.log('🔍 CHRISTINE TEXT EXTRACTED:', JSON.stringify({\n      textLength: text.length,\n      hasName: text.includes('christine ferreira'),\n      preview: text.substring(0, 200)\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconst christineCount = out.filter(it => {\n  const j = it.json || {};\n  const text = String(j.text || j.body || j.content || '').toLowerCase();\n  return text.includes(TARGET) && text.includes('ferreira');\n}).length;\n\nconsole.log(`LOG 4: Total texts extracted: ${items.length}, Christine texts: ${christineCount}`);\n\nreturn out;"
+      },
+      "id": "80509c7b-6a38-4851-8b6e-99b5d9708e42",
+      "name": "LOG 4: After Text Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4576,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const output = String(j.output || JSON.stringify(j)).toLowerCase();\n  \n  if (output.includes(TARGET) && output.includes('ferreira')) {\n    console.log('🔍 CHRISTINE IN AI OUTPUT:', JSON.stringify({\n      outputPreview: output.substring(0, 500),\n      fullOutput: j.output || j\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconst christineCount = out.filter(it => {\n  const j = it.json || {};\n  const output = String(j.output || JSON.stringify(j)).toLowerCase();\n  return output.includes(TARGET) && output.includes('ferreira');\n}).length;\n\nconsole.log(`LOG 5: Total AI outputs: ${items.length}, Christine in outputs: ${christineCount}`);\n\nreturn out;"
+      },
+      "id": "8d22e835-2303-445d-b2ae-c1ad5f5b4c54",
+      "name": "LOG 5: After AI Parsing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4192,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const candidate = j.candidate || {};\n  const name = String(candidate.candidate_name || '').toLowerCase();\n  const email = String(candidate.email_address || '').toLowerCase();\n  \n  if (name.includes(TARGET) || name.includes('ferreira')) {\n    console.log('🔍 CHRISTINE AFTER EMAIL MERGE:', JSON.stringify({\n      candidate_name: candidate.candidate_name,\n      email_address: candidate.email_address,\n      sender_email: j.sender_email,\n      canonical_day: j.canonical_day,\n      join_email: j.join_email\n    }, null, 2));\n  }\n  \n  out.push(it);\n}\n\nconst christineCount = out.filter(it => {\n  const j = it.json || {};\n  const candidate = j.candidate || {};\n  const name = String(candidate.candidate_name || '').toLowerCase();\n  return name.includes(TARGET) || name.includes('ferreira');\n}).length;\n\nconsole.log(`LOG 6: Total after merge: ${items.length}, Christine count: ${christineCount}`);\n\nreturn out;"
+      },
+      "id": "765c6b23-3c5b-4862-8e7e-54df32cee2d7",
+      "name": "LOG 6: After Email Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3456,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const TARGET = 'christine';\nconst out = [];\n\nfor (const it of items) {\n  const j = it.json || {};\n  const candidates = j.candidates || [];\n  \n  const christineCandidates = candidates.filter(c => {\n    const name = String(c.candidate_name || '').toLowerCase();\n    return name.includes(TARGET) || name.includes('ferreira');\n  });\n  \n  if (christineCandidates.length > 0) {\n    console.log('🔍 CHRISTINE IN FINAL PAYLOAD:', JSON.stringify(christineCandidates, null, 2));\n  } else {\n    console.log('❌ CHRISTINE NOT IN FINAL PAYLOAD');\n    console.log('All candidates in payload:', candidates.map(c => c.candidate_name));\n  }\n  \n  out.push(it);\n}\n\nconsole.log(`LOG 7: Final payload ready for DB`);\n\nreturn out;"
+      },
+      "id": "b8b7e290-6eb2-4d56-ad89-8739b7df0699",
+      "name": "LOG 7: Final DB Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3040,
+        1440
+      ]
+    }
+  ],
+  "pinData": {
+    "Gmail Trigger": [
+      {
+        "json": {
+          "id": "19c06994d2ac88d1",
+          "threadId": "19c06994d2ac88d1",
+          "snippet": "I&#39;ve attached my resume for your consideration. Looking forward to the opportunity to discuss my application Kind regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1371367,
+          "historyId": "12984354",
+          "internalDate": "1769637220000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "IB Ready for Bahrain",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "id": "19c066b6f5e91b0a",
+          "threadId": "19c066b6f5e91b0a",
+          "snippet": "Greetings, I&#39;ve attached my resume for your consideration. Looking forward to the opportunity to discuss my application Kind regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1371698,
+          "historyId": "12984277",
+          "internalDate": "1769634213000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for KG classroom teachers",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 1
+        }
+      },
+      {
+        "json": {
+          "id": "19c066a0b4622265",
+          "threadId": "19c066a0b4622265",
+          "snippet": "Greetings, I&#39;ve attached my resume for your consideration. Looking forward to the opportunity to discuss my application Kind regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1371719,
+          "historyId": "12984204",
+          "internalDate": "1769634121000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for High School English teachers - Oman",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 2
+        }
+      },
+      {
+        "json": {
+          "id": "19c06693039e5078",
+          "threadId": "19c06693039e5078",
+          "snippet": "Greetings, I&#39;ve attached my resume for your consideration. Looking forward to the opportunity to discuss my application Kind regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1371719,
+          "historyId": "12984132",
+          "internalDate": "1769634067000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for High School English teachers - Oman",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 3
+        }
+      },
+      {
+        "json": {
+          "id": "19c0665cecde299b",
+          "threadId": "19c0665cecde299b",
+          "snippet": "Greetings, I&#39;ve attached my resume for your consideration. Looking forward to the opportunity to discuss my application Kind regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1371705,
+          "historyId": "12984052",
+          "internalDate": "1769633845000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for Foundation phase teachers",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 4
+        }
+      },
+      {
+        "json": {
+          "id": "19c0651d7aedd22d",
+          "threadId": "19c0651d7aedd22d",
+          "snippet": "Dear Hiring Manager, I hope this email finds you well. I am writing to express my interest in the Foundation Phase Teacher position in Muscat, Oman, as advertised on your website. I am a qualified and",
+          "payload": {
+            "mimeType": "multipart/alternative"
+          },
+          "sizeEstimate": 1775316,
+          "historyId": "12983978",
+          "internalDate": "1769632536000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Riefqah Mohamed <riefqahmohamed.rm@gmail.com>",
+          "Subject": "Application for Foundation phase teachers",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 5
+        }
+      },
+      {
+        "json": {
+          "id": "19c064c3a167d75b",
+          "threadId": "19c064c3a167d75b",
+          "snippet": "Dear Hiring Manager, I hope this email finds you well. I am writing to express my interest in the Primary Homeroom Teacher position (Grades 1–5) as advertised. I am an experienced primary school",
+          "payload": {
+            "mimeType": "multipart/alternative"
+          },
+          "sizeEstimate": 488956,
+          "historyId": "12983889",
+          "internalDate": "1769632170000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Riefqah Mohamed <riefqahmohamed.rm@gmail.com>",
+          "Subject": "Application for Primary homeroom teachers",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 6
+        }
+      },
+      {
+        "json": {
+          "id": "19c052df7140742a",
+          "threadId": "19c052df7140742a",
+          "snippet": "Dear Sir/Madam, I hope you are well. I would like to apply for teaching positions in the Middle East through SA Recruitment. I am a qualified and motivated educator with relevant teaching experience",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 226669,
+          "historyId": "12983724",
+          "internalDate": "1769613407000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Renoster Ngoako Mohale <94mohale@gmail.com>",
+          "Subject": "\"coding in Malta\"",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 7
+        }
+      },
+      {
+        "json": {
+          "id": "19c05257a2fa336b",
+          "threadId": "19c05257a2fa336b",
+          "snippet": "Dear Hiring Manager, I am writing to express my enthusiastic interest in the experienced primary homeroom teacher position (grades 1–5) at your client school in Riyadh, Saudi Arabia, as advertised on",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1375224,
+          "historyId": "12983607",
+          "internalDate": "1769612850000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for Primary homeroom teachers",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 8
+        }
+      },
+      {
+        "json": {
+          "id": "19c0518d266b88c1",
+          "threadId": "19c0518d266b88c1",
+          "snippet": "Greetings, I am Desné Kemoetie. I just completed my bacholars degree in foundation phase teaching at varsity college. I am interested in the positon that was advertised on your website. I&#39;ve",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 1372463,
+          "historyId": "12983547",
+          "internalDate": "1769612024000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Living FOR Later <desnekemoetie126@gmail.com>",
+          "Subject": "Application for Middle School English teacher - Bahrain",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 9
+        }
+      },
+      {
+        "json": {
+          "id": "19c04ce650a5d3bc",
+          "threadId": "19c04ce650a5d3bc",
+          "snippet": "Dear Sir/Madam, I wish to apply for the position of Middle School English Teacher in Bahrain as advertised. I am a qualified English teacher with teaching experience across kindergarten, primary, and",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 401676,
+          "historyId": "12982930",
+          "internalDate": "1769607149000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Siphesihle Batyi <batyiesihle@gmail.com>",
+          "Subject": "Application for Middle School English teacher - Bahrain",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 10
+        }
+      },
+      {
+        "json": {
+          "id": "19c04c53453fc8a1",
+          "threadId": "19c04c53453fc8a1",
+          "snippet": "Good day. Please find attached my curriculum vitae for possible Mathematics positions available at one of your schools. Hope this meets your requirements. Looking forward to hearing from you. Regards",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 307079,
+          "historyId": "12982677",
+          "internalDate": "1769606547000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            },
+            {
+              "id": "UNREAD",
+              "name": "UNREAD"
+            }
+          ],
+          "From": "Patricia Basson <basson.patricia33@gmail.com>",
+          "Subject": "I’ve Done the Maths - I’m Applying!",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 11
+        }
+      },
+      {
+        "json": {
+          "id": "19c03db54e43ef86",
+          "threadId": "19ad36a68ccf1c13",
+          "snippet": "Good day My apologies as I was unaware of the specific grading. Thank you On Wed, 28 Jan 2026 at 11:10 AM SA Recruitment &lt;info@sa-recruitment.com&gt; wrote: Good day Trinisha We are aware that you",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 125281,
+          "historyId": "12981938",
+          "internalDate": "1769591216000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Trinisha Naidoo <trinisha07@gmail.com>",
+          "Subject": "Re: Teaching position -August 2027",
+          "To": "SA Recruitment <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 12
+        }
+      },
+      {
+        "json": {
+          "id": "19c03d99335fbb28",
+          "threadId": "19bfb88db36edb7a",
+          "snippet": "Do you perhaps know of other Recruitment sites i could look at? On Wed, 28 Jan 2026, 11:02 SA Recruitment, &lt;info@sa-recruitment.com&gt; wrote: Thank you for your response, Kyle. All the best. Kind",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 86658,
+          "historyId": "12981840",
+          "internalDate": "1769591103000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Kyle Louis <kylelouis96@gmail.com>",
+          "Subject": "Re: KYLE LOUIS",
+          "To": "SA Recruitment <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 13
+        }
+      },
+      {
+        "json": {
+          "id": "19c03d70bcae090c",
+          "threadId": "19bfb88db36edb7a",
+          "snippet": "Thank you for your response, Kyle. All the best. Kind regards SA-Recruitment team www.sa-recruitment.com Tel: +27 (0)21 100 3145 From: Kyle Louis &lt;kylelouis96@gmail.com&gt; Sent: Wednesday, January",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 52288,
+          "historyId": "12982302",
+          "internalDate": "1769590947000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Kyle Louis <kylelouis96@gmail.com>",
+          "Subject": "Re: KYLE LOUIS"
+        },
+        "pairedItem": {
+          "item": 14
+        }
+      },
+      {
+        "json": {
+          "id": "19c03d3e92245a0f",
+          "threadId": "19bfb88db36edb7a",
+          "snippet": "Thank you I have received it. I see you only accommodate single status people. Im married so it would not benefit me. Regards Mr Louis On Tue, 27 Jan 2026, 09:33 SA Recruitment, &lt;info@sa-recruitment",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 52089,
+          "historyId": "12981734",
+          "internalDate": "1769590732000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Kyle Louis <kylelouis96@gmail.com>",
+          "Subject": "Re: KYLE LOUIS",
+          "To": "SA Recruitment <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 15
+        }
+      },
+      {
+        "json": {
+          "id": "19c03b413fcb04df",
+          "threadId": "19c03b413fcb04df",
+          "snippet": "Dear SA-Recruitment Team I hope this email finds you well. I am writing to express my interest in international teaching opportunities through SA-Recruitment. I am a qualified educator holding a",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 2284604,
+          "historyId": "12981454",
+          "internalDate": "1769588646000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Samkelisiwe Ndwandwe <samkelisiwen862@gmail.com>",
+          "Subject": "Application for Teaching Opportunities - Qualified Life Science Educator",
+          "To": "\"info@sa-recruitment.com\" <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 16
+        }
+      },
+      {
+        "json": {
+          "id": "19c03acf7e9e51bd",
+          "threadId": "19c039bd05328edb",
+          "snippet": "Good day Mohamed Thank you for your email. Can we ask you to please update your CV on the attached CV template and also complete our registration form? For Australia, please send an email to our",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 270229,
+          "historyId": "12981350",
+          "internalDate": "1769588192000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "\"M. Althaaf Ebrahim\" <fbbebrahim@gmail.com>",
+          "Subject": "Re: Application for roles in the middle or far east"
+        },
+        "pairedItem": {
+          "item": 17
+        }
+      },
+      {
+        "json": {
+          "id": "19c03aaec8f29459",
+          "threadId": "19be9c5f71da07b8",
+          "snippet": "Thank you for your response, Mari-Lee. You are booked for a call on Friday morning at 8:30 am. Kind regards SA-Recruitment team www.sa-recruitment.com Tel: +27 (0)21 100 3145 From: Mari-Lee Visser &lt;",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 85942,
+          "historyId": "12982299",
+          "internalDate": "1769588057000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Mari-Lee Visser <mlee.visser@gmail.com>",
+          "Subject": "Re: Re:"
+        },
+        "pairedItem": {
+          "item": 18
+        }
+      },
+      {
+        "json": {
+          "id": "19c03aa4772ee4bb",
+          "threadId": "19bf97e74e21715c",
+          "snippet": "Good morning Rochne Thank you for your documents and completed forms. Your profile is now registered on our database. Should any of our client schools shortlist your CV for a potential interview, we",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 53695,
+          "historyId": "12982300",
+          "internalDate": "1769588015000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Rochne Meyer <msmeyer95@gmail.com>",
+          "Subject": "Re: Send me to the land of sand"
+        },
+        "pairedItem": {
+          "item": 19
+        }
+      },
+      {
+        "json": {
+          "id": "19c03a817da2cf8d",
+          "threadId": "19be9c5f71da07b8",
+          "snippet": "Good day I am available 7:40-9:00, otherwise only on friday morning same time and the afternoon (friday) On Wed, 28 Jan 2026 at 09:58, SA Recruitment &lt;info@sa-recruitment.com&gt; wrote: Good morning",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 61579,
+          "historyId": "12981230",
+          "internalDate": "1769587858000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Mari-Lee Visser <mlee.visser@gmail.com>",
+          "Subject": "Re: Re:",
+          "To": "SA Recruitment <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 20
+        }
+      },
+      {
+        "json": {
+          "id": "19c03a77b9a7eff8",
+          "threadId": "19ad36a68ccf1c13",
+          "snippet": "Good day Trinisha We are aware that you are currently a primary teacher. The vacancy in Abu Dhabi is for middle/high school English (Grades 7 - 12). If you are currently teaching these grades, and also",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 132848,
+          "historyId": "12982297",
+          "internalDate": "1769587832000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Trinisha Naidoo <trinisha07@gmail.com>",
+          "Subject": "Re: Teaching position -August 2027"
+        },
+        "pairedItem": {
+          "item": 21
+        }
+      },
+      {
+        "json": {
+          "id": "19c03a54cf832423",
+          "threadId": "19bd0196e6c97c3b",
+          "snippet": "Good morning Marylene Thank you for your documents and completed forms. Your profile is now registered on our database. Our team will keep in touch regarding vacancies and any potential interview",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 53978,
+          "historyId": "12982298",
+          "internalDate": "1769587686000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Marylene Early <earlymarylene@yahoo.com>",
+          "Subject": "Re: Primary teacher - Bahrain"
+        },
+        "pairedItem": {
+          "item": 22
+        }
+      },
+      {
+        "json": {
+          "id": "19c03a374b3d2514",
+          "threadId": "19ad36a68ccf1c13",
+          "snippet": "Good afternoon I think you are mistaken, I am a primary teacher who teaches all subjects (including English). I am also a Science coordinator for the school. My job is currently a Primary classroom",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 102336,
+          "historyId": "12982133",
+          "internalDate": "1769587556000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "Trinisha Naidoo <trinisha07@gmail.com>",
+          "Subject": "Re: Teaching position -August 2027",
+          "To": "SA Recruitment <info@sa-recruitment.com>"
+        },
+        "pairedItem": {
+          "item": 23
+        }
+      },
+      {
+        "json": {
+          "id": "19c03a0939297afe",
+          "threadId": "19ad36a68ccf1c13",
+          "snippet": "Good day Trinisha Thank you for your response. The vacancy posted on the 18 th was for Middle and High School English teachers. You would currently have to be teaching English to be considered - as per",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 107047,
+          "historyId": "12982297",
+          "internalDate": "1769587378000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Trinisha Naidoo <trinisha07@gmail.com>",
+          "Subject": "Re: Teaching position -August 2027"
+        },
+        "pairedItem": {
+          "item": 24
+        }
+      },
+      {
+        "json": {
+          "id": "19c039cd6f60a45e",
+          "threadId": "19be9c5f71da07b8",
+          "snippet": "Good morning Mari-Lee Thank you for your documents and completed forms. Our consultant, Nicole, would like to book a call with you for tomorrow. Please advise what time would suit you best. Kind",
+          "payload": {
+            "mimeType": "multipart/related"
+          },
+          "sizeEstimate": 58756,
+          "historyId": "12982299",
+          "internalDate": "1769587134000",
+          "labels": [
+            {
+              "id": "SENT",
+              "name": "SENT"
+            }
+          ],
+          "From": "SA Recruitment <info@sa-recruitment.com>",
+          "To": "Mari-Lee Visser <mlee.visser@gmail.com>",
+          "Subject": "Re: Re:"
+        },
+        "pairedItem": {
+          "item": 25
+        }
+      },
+      {
+        "json": {
+          "id": "19c039bd05328edb",
+          "threadId": "19c039bd05328edb",
+          "snippet": "Hi. I hope that this email finds you well. Do note that I am sending this email after advice from my good friend Nicholas Dagnin. I am from Al Manhal school in Riyadh, Saudi Arabia and I seek to gain",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 17215943,
+          "historyId": "12981344",
+          "internalDate": "1769587051000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "\"M. Althaaf Ebrahim\" <fbbebrahim@gmail.com>",
+          "Subject": "Application for roles in the middle or far east",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 26
+        }
+      },
+      {
+        "json": {
+          "id": "19c03920a817caa8",
+          "threadId": "19c03920a817caa8",
+          "snippet": "",
+          "payload": {
+            "mimeType": "multipart/mixed"
+          },
+          "sizeEstimate": 340312,
+          "historyId": "12980315",
+          "internalDate": "1769586415000",
+          "labels": [
+            {
+              "id": "INBOX",
+              "name": "INBOX"
+            },
+            {
+              "id": "IMPORTANT",
+              "name": "IMPORTANT"
+            },
+            {
+              "id": "CATEGORY_PERSONAL",
+              "name": "CATEGORY_PERSONAL"
+            }
+          ],
+          "From": "sher dil <sherdilgumbat@gmail.com>",
+          "Subject": "",
+          "To": "info@sa-recruitment.com"
+        },
+        "pairedItem": {
+          "item": 27
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Messages": {
+      "main": [
+        [
+          {
+            "node": "Get Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message": {
+      "main": [
+        [
+          {
+            "node": "Extract Date | SAST TIME",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Explode Attachments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "extracted email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 1: After Gmail Fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explode Attachments": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is PDF?": {
+      "main": [
+        [
+          {
+            "node": "STRIP ONLY CV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 3: After PDF Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is DOC/DOCX?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is DOC/DOCX?": {
+      "main": [
+        [
+          {
+            "node": "PDFco Api",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Candidates & Split",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 5: After AI Parsing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDFco Api": {
+      "main": [
+        [
+          {
+            "node": "PDFco Api1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDFco Api1": {
+      "main": [
+        [
+          {
+            "node": "PDF.co Extract to Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF.co Extract to Text": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 4: After Text Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "List Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "STRIP ONLY CV": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Date | SAST TIME": {
+      "main": [
+        [
+          {
+            "node": "join email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Is PDF?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 2: After Filename Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB Payload Builder": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 7: Final DB Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "flatten": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LOG 6: After Email Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "join email": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Candidates & Split": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge3": {
+      "main": [
+        [
+          {
+            "node": "flatten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge4": {
+      "main": [
+        [
+          {
+            "node": "DB Payload Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2e7cb4ac-3df3-4851-8154-25e13549103e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bd271851e2865457a06c3e78b26d026246babf97b76eea5c52fc2576f09c1435"
+  },
+  "id": "g8MNnNm902IgS9Ku",
+  "tags": []
+}
