@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.55.0";
+import { ZipReader, BlobReader, TextWriter } from "https://esm.sh/@zip.js/zip.js@2.7.52";
 
 // ============================================================================
 // Types
@@ -258,6 +259,171 @@ class GmailClient {
 }
 
 // ============================================================================
+// DOCX Text Extraction (DOCX = ZIP containing XML)
+// ============================================================================
+
+/**
+ * Extract plain text from a DOCX file by reading word/document.xml from the ZIP.
+ * DOCX files are ZIP archives. The main content is in word/document.xml.
+ * We strip XML tags to get plain text.
+ */
+async function extractTextFromDocx(base64Data: string): Promise<string> {
+  try {
+    // Convert base64 to binary
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "application/zip" });
+
+    // Open ZIP
+    const zipReader = new ZipReader(new BlobReader(blob));
+    const entries = await zipReader.getEntries();
+
+    // Find word/document.xml (main content)
+    const docEntry = entries.find(
+      (e) => e.filename === "word/document.xml",
+    );
+
+    if (!docEntry || !docEntry.getData) {
+      await zipReader.close();
+      return "[Could not find document content in DOCX file]";
+    }
+
+    const xmlContent = await docEntry.getData(new TextWriter());
+    await zipReader.close();
+
+    // Parse XML to extract text content
+    // <w:t> tags contain text, <w:p> tags are paragraphs, <w:br/> are line breaks
+    const text = xmlContent
+      // Replace paragraph endings with newlines
+      .replace(/<\/w:p>/g, "\n")
+      // Replace line breaks with newlines
+      .replace(/<w:br[^>]*\/>/g, "\n")
+      // Replace tab characters
+      .replace(/<w:tab\/>/g, "\t")
+      // Strip all XML tags, keeping inner text
+      .replace(/<[^>]+>/g, "")
+      // Decode common XML entities
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      // Clean up excessive whitespace while preserving paragraph breaks
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return text || "[DOCX file appears to be empty]";
+  } catch (err) {
+    console.error("DOCX text extraction failed:", err);
+    return `[DOCX text extraction failed: ${(err as Error).message}]`;
+  }
+}
+
+/**
+ * Extract text from legacy .doc files (binary format).
+ * Legacy DOC files store text in OLE2 compound format. We do a best-effort
+ * extraction by finding readable text runs in the binary data, filtering out
+ * binary metadata and control sequences.
+ */
+function extractTextFromDoc(base64Data: string): string {
+  try {
+    const binaryString = atob(base64Data);
+
+    // DOC files have text content interspersed with binary formatting.
+    // Strategy: find runs of printable ASCII characters (words) and
+    // assemble them, filtering out very short runs that are likely metadata.
+    const MIN_WORD_LENGTH = 2; // Minimum run of printable chars to keep
+    const MAX_OUTPUT_CHARS = 30000; // Cap to ~7500 tokens max
+
+    const textRuns: string[] = [];
+    let currentRun = "";
+    let totalChars = 0;
+
+    for (let i = 0; i < binaryString.length && totalChars < MAX_OUTPUT_CHARS; i++) {
+      const code = binaryString.charCodeAt(i);
+
+      if (code >= 32 && code < 127) {
+        currentRun += binaryString[i];
+      } else if ((code === 13 || code === 10) && currentRun.length >= MIN_WORD_LENGTH) {
+        // Line break after meaningful text
+        currentRun += "\n";
+      } else {
+        // End of a text run
+        if (currentRun.trim().length >= MIN_WORD_LENGTH) {
+          // Filter out common binary artifacts: long hex strings, control sequences
+          const trimmed = currentRun.trim();
+          if (!/^[0-9A-Fa-f\s]{20,}$/.test(trimmed) && // hex dumps
+              !/^[{}\[\]\\\/]{5,}$/.test(trimmed) &&    // formatting codes
+              !/^[\x00-\x1f\x7f]+$/.test(trimmed)) {    // control chars
+            textRuns.push(trimmed);
+            totalChars += trimmed.length;
+          }
+        }
+        currentRun = "";
+      }
+    }
+
+    // Don't forget the last run
+    if (currentRun.trim().length >= MIN_WORD_LENGTH && totalChars < MAX_OUTPUT_CHARS) {
+      textRuns.push(currentRun.trim());
+    }
+
+    const cleaned = textRuns.join(" ")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{3,}/g, " ")
+      .trim();
+
+    // If we got very little text, it's likely a complex DOC we can't parse
+    if (cleaned.length < 50) {
+      return "[Could not extract meaningful text from legacy .doc file]";
+    }
+
+    // Final safety cap
+    if (cleaned.length > MAX_OUTPUT_CHARS) {
+      return cleaned.substring(0, MAX_OUTPUT_CHARS) + "\n[Text truncated...]";
+    }
+
+    return cleaned;
+  } catch (err) {
+    return `[DOC text extraction failed: ${(err as Error).message}]`;
+  }
+}
+
+/**
+ * Extract text from RTF files by stripping RTF control words and groups.
+ */
+function extractTextFromRtf(base64Data: string): string {
+  try {
+    const text = atob(base64Data);
+    // Simple RTF text extraction: remove control words and groups
+    const cleaned = text
+      // Remove RTF header/control groups
+      .replace(/\{\\[^{}]*\}/g, "")
+      // Remove control words (e.g., \par, \b, \fs24)
+      .replace(/\\[a-z]+[-]?\d*\s?/g, " ")
+      // Remove remaining braces
+      .replace(/[{}]/g, "")
+      // Remove backslash escapes
+      .replace(/\\\\/g, "\\")
+      .replace(/\\'[0-9a-f]{2}/gi, "")
+      // Clean whitespace
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{3,}/g, " ")
+      .trim();
+
+    if (cleaned.length < 50) {
+      return "[Could not extract meaningful text from RTF file]";
+    }
+    return cleaned;
+  } catch (err) {
+    return `[RTF text extraction failed: ${(err as Error).message}]`;
+  }
+}
+
+// ============================================================================
 // Claude AI Helper
 // ============================================================================
 
@@ -271,13 +437,6 @@ async function extractCandidateWithClaude(
   const standardBase64 = attachmentBase64
     .replace(/-/g, "+")
     .replace(/_/g, "/");
-
-  // Map mime type to Claude's expected media types
-  let mediaType = mimeType;
-  if (mimeType === "application/msword" || mimeType === "application/rtf" || mimeType === "text/rtf") {
-    // For DOC/RTF, we still send as-is — Claude handles document types
-    mediaType = mimeType;
-  }
 
   const systemPrompt = `You are a CV parsing assistant for a South African teacher recruitment agency. Your job is to determine if a document is a CV/resume and, if so, extract structured candidate data.
 
@@ -332,22 +491,34 @@ SOUTH AFRICAN CONTEXT:
         data: standardBase64,
       },
     });
-  } else {
-    // For DOC/DOCX/RTF, also send as base64 document
     content.push({
-      type: "document",
-      source: {
-        type: "base64",
-        media_type: mediaType,
-        data: standardBase64,
-      },
+      type: "text",
+      text: `Parse this document (filename: "${filename}"). Return ONLY the JSON object as specified. If this is not a CV/resume, return {"candidates": []}.`,
+    });
+  } else {
+    // For DOC/DOCX/RTF: extract text and send as plain text content
+    // Claude's base64 document API only supports PDFs
+    let extractedText: string;
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+
+    if (ext === "docx" || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      console.log(`[Claude] Extracting text from DOCX: ${filename}`);
+      extractedText = await extractTextFromDocx(standardBase64);
+    } else if (ext === "doc" || mimeType === "application/msword") {
+      console.log(`[Claude] Extracting text from DOC: ${filename}`);
+      extractedText = extractTextFromDoc(standardBase64);
+    } else if (ext === "rtf" || mimeType === "application/rtf" || mimeType === "text/rtf") {
+      console.log(`[Claude] Extracting text from RTF: ${filename}`);
+      extractedText = extractTextFromRtf(standardBase64);
+    } else {
+      extractedText = `[Unsupported file type: ${mimeType} / .${ext}]`;
+    }
+
+    content.push({
+      type: "text",
+      text: `Parse the following document text extracted from "${filename}". Return ONLY the JSON object as specified. If this is not a CV/resume, return {"candidates": []}.\n\n--- DOCUMENT TEXT ---\n${extractedText}\n--- END DOCUMENT TEXT ---`,
     });
   }
-
-  content.push({
-    type: "text",
-    text: `Parse this document (filename: "${filename}"). Return ONLY the JSON object as specified. If this is not a CV/resume, return {"candidates": []}.`,
-  });
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -396,7 +567,23 @@ SOUTH AFRICAN CONTEXT:
   }
   jsonStr = jsonStr.trim();
 
-  const parsed = JSON.parse(jsonStr) as ClaudeResponse;
+  // Try to extract JSON from the response if it has surrounding text
+  if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) {
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+  }
+
+  let parsed: ClaudeResponse;
+  try {
+    parsed = JSON.parse(jsonStr) as ClaudeResponse;
+  } catch (parseErr) {
+    console.error(`JSON parse failed for Claude response: ${(parseErr as Error).message}`);
+    console.error(`Raw response (first 500 chars): ${jsonStr.substring(0, 500)}`);
+    // If parsing fails, treat as non-CV
+    return { candidates: [] };
+  }
 
   // Safety: ensure structure
   if (!parsed.candidates || !Array.isArray(parsed.candidates)) {
